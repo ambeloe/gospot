@@ -4,8 +4,10 @@ import (
 	"bufio"
 	"encoding/json"
 	"fmt"
+	"golang.org/x/crypto/ssh/terminal"
 	"log"
 	"os"
+	"syscall"
 )
 
 func CommitConfig(v interface{}, f *os.File) {
@@ -31,11 +33,11 @@ func CrashAndBurn(e error) {
 	}
 }
 
-//func PrintStruct(v interface{}) {
-//	str, err := json.MarshalIndent(v, "", "\t")
-//	CrashAndBurn(err)
-//	fmt.Println(string(str))
-//}
+func PrintStruct(v interface{}) {
+	str, err := json.MarshalIndent(v, "", "  ")
+	CrashAndBurn(err)
+	fmt.Println(string(str))
+}
 
 func FileSize(path string) int64 {
 	f, err := os.Open(path)
@@ -43,4 +45,13 @@ func FileSize(path string) int64 {
 	fi, err := f.Stat()
 	CrashAndBurn(err)
 	return fi.Size()
+}
+
+func PasswdInterrogate(prompt string) []byte {
+	fmt.Print(prompt)
+	goddamnit_go, err := terminal.ReadPassword(syscall.Stdin)
+	if err != nil {
+		fmt.Println(err)
+	}
+	return goddamnit_go
 }

@@ -1,21 +1,26 @@
 package gospot
 
 import (
-	"autotrader/crypt"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"github.com/librespot-org/librespot-golang/Spotify"
-	_ "github.com/librespot-org/librespot-golang/Spotify"
 	"github.com/librespot-org/librespot-golang/librespot"
-	_ "github.com/librespot-org/librespot-golang/librespot"
 	"github.com/librespot-org/librespot-golang/librespot/core"
-	_ "github.com/librespot-org/librespot-golang/librespot/core"
 	"github.com/librespot-org/librespot-golang/librespot/utils"
-	_ "github.com/librespot-org/librespot-golang/librespot/utils"
 	"gospot/util"
 	"io"
 	"os"
 	"time"
+)
+
+var DEBUG bool = false
+
+type FORMAT_TYPE byte
+
+const (
+	FORMAT_MP3 FORMAT_TYPE = 1
+	FORMAT_OGG FORMAT_TYPE = 2
 )
 
 type Localstore struct {
@@ -29,7 +34,13 @@ type Session struct {
 	Sess *core.Session
 }
 
-func Login(confFile string) (Session, error) {
+type Track struct {
+	Id     string
+	STrack *Spotify.Track
+}
+
+func Login(confFile string, debug bool) (Session, error) {
+	DEBUG = debug
 	var dirty bool
 	var ses Session
 	//create config file if it doesnt exist else load config
@@ -54,9 +65,10 @@ func Login(confFile string) (Session, error) {
 		fmt.Println("Using saved username: \"" + ses.Ls.Username + "\"")
 	}
 	if ses.Ls.Authblob == nil {
-		pass := string(crypt.PasswdInterrogate("Password (won't echo): "))
+		pass := string(util.PasswdInterrogate("Password (won't echo): "))
 		fmt.Println("")
 		sess, err := librespot.Login(ses.Ls.Username, pass, ses.Ls.DeviceName)
+		pass = ""
 		util.CrashAndBurn(err)
 		ses.Ls.Authblob = sess.ReusableAuthBlob()
 		util.CommitConfig(ses.Ls, f)
@@ -71,31 +83,60 @@ func Login(confFile string) (Session, error) {
 	return ses, err
 }
 
-func (s Session) GetAudio(trackId string, format Spotify.AudioFile_Format) ([]byte, error) {
-	trk, err := s.Sess.Mercury().GetTrack(utils.Base62ToHex(trackId))
-	util.CrashAndBurn(err)
+func (s Session) GetTrack(trackId string) (Track, error) {
+	var err error
+	var t Track
+	t.Id = trackId
+	t.STrack, err = s.Sess.Mercury().GetTrack(utils.Base62ToHex(trackId))
+	return t, err
+}
+
+// GetAudio returns the audio file in the desired format(mp3 or ogg), starting at high bitrate then going lower if not available. Throws error if audio of type cannot be found.
+func (s Session) GetAudio(t Track, format FORMAT_TYPE) ([]byte, error) {
+	var fmts []int32
 	var auds []*Spotify.AudioFile
 	var aud *Spotify.AudioFile
-	if trk.GetFile() == nil {
-		auds = trk.Alternative[0].GetFile()
+	if t.STrack.GetFile() == nil {
+		if DEBUG {
+			fmt.Println(t.Id + ": ")
+			util.PrintStruct(t)
+		}
+		auds = t.STrack.Alternative[0].GetFile()
 	} else {
-		auds = trk.GetFile()
+		auds = t.STrack.GetFile()
 	}
-	for _, t := range auds {
-		if *(t.Format) == format {
-			aud = t
+
+	//set desired format order
+	if format == FORMAT_MP3 {
+		//mp3: 320kbps, 256kbps, 160kbps, 96kbps
+		fmts = []int32{4, 3, 5, 6}
+	} else if format == FORMAT_OGG {
+		//ogg: 320kbps, 160kbps, 96kbps
+		fmts = []int32{3, 2, 1}
+	} else {
+		return nil, errors.New("invalid format passed")
+	}
+
+	for _, i := range fmts {
+		for _, tr := range auds {
+			//TODO: learn why the cast is necessary
+			if int32(*(tr.Format)) == i {
+				aud = tr
+			}
 		}
 	}
 	if aud == nil {
-		fmt.Println("shit")
+		return nil, errors.New("no audio found in desired format")
 	} else {
-		fmt.Println(aud)
+		if DEBUG {
+			util.PrintStruct(aud)
+		}
 	}
 
-	decaud, err := s.Sess.Player().LoadTrack(aud, trk.GetGid())
+	decaud, err := s.Sess.Player().LoadTrack(aud, t.STrack.GetGid())
 	util.CrashAndBurn(err)
-	fmt.Println(decaud)
 	for decaud.Size() <= 32768 {
+		//sleep for 10ms
 		time.Sleep(1e7)
 	}
 	//fmt.Println("size: " + string(decaud.Size()) + " bytes")
@@ -114,5 +155,6 @@ func (s Session) GetAudio(trackId string, format Spotify.AudioFile_Format) ([]by
 		}
 	}
 	//TODO: for the love of god do actual error handling
+	err = nil
 	return ogg, err
 }
