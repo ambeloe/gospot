@@ -49,9 +49,9 @@ func FileSize(path string) int64 {
 
 func PasswdInterrogate(prompt string) []byte {
 	fmt.Print(prompt)
-	goddamnit_go, err := terminal.ReadPassword(syscall.Stdin)
+	goddamnitGo, err := terminal.ReadPassword(syscall.Stdin)
 	if err != nil {
 		fmt.Println(err)
 	}
-	return goddamnit_go
+	return goddamnitGo
 }

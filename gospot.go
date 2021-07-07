@@ -1,6 +1,7 @@
 package gospot
 
 import (
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -10,33 +11,52 @@ import (
 	"github.com/librespot-org/librespot-golang/librespot/utils"
 	"gospot/util"
 	"io"
+	"net/http"
 	"os"
 	"time"
 )
 
-var DEBUG bool = false
+var DEBUG = false
 
-type FORMAT_TYPE byte
+type FormatType byte
 
 const (
-	FORMAT_MP3 FORMAT_TYPE = 1
-	FORMAT_OGG FORMAT_TYPE = 2
+	FormatMp3 FormatType = 1
+	FormatOgg FormatType = 2
 )
 
-type Localstore struct {
+type LocalStore struct {
 	Username   string
-	Authblob   []byte
+	AuthBlob   []byte
 	DeviceName string
 }
 
 type Session struct {
-	Ls   *Localstore
+	Ls   *LocalStore
 	Sess *core.Session
 }
 
-type Track struct {
+type TrackStub struct {
 	Id     string
 	STrack *Spotify.Track
+}
+
+type Track struct {
+	Title   string
+	Artists []string
+	Album   string
+	Art     Image
+	Sound   Audio
+}
+
+type Image struct {
+	Stub *Spotify.Image
+	File []byte
+}
+
+type Audio struct {
+	Format Spotify.AudioFile_Format
+	File   []byte
 }
 
 func Login(confFile string, debug bool) (Session, error) {
@@ -46,7 +66,7 @@ func Login(confFile string, debug bool) (Session, error) {
 	//create config file if it doesnt exist else load config
 	f, err := os.OpenFile(confFile, os.O_CREATE|os.O_RDWR, 0600)
 	util.CrashAndBurn(err)
-	var c []byte = make([]byte, util.FileSize(confFile))
+	var c = make([]byte, util.FileSize(confFile))
 	_, err = f.Read(c)
 	util.CrashAndBurn(err)
 	//beware trailing commas
@@ -64,16 +84,16 @@ func Login(confFile string, debug bool) (Session, error) {
 	} else {
 		fmt.Println("Using saved username: \"" + ses.Ls.Username + "\"")
 	}
-	if ses.Ls.Authblob == nil {
+	if ses.Ls.AuthBlob == nil {
 		pass := string(util.PasswdInterrogate("Password (won't echo): "))
 		fmt.Println("")
 		sess, err := librespot.Login(ses.Ls.Username, pass, ses.Ls.DeviceName)
 		pass = ""
 		util.CrashAndBurn(err)
-		ses.Ls.Authblob = sess.ReusableAuthBlob()
+		ses.Ls.AuthBlob = sess.ReusableAuthBlob()
 		util.CommitConfig(ses.Ls, f)
 	} else {
-		ses.Sess, err = librespot.LoginSaved(ses.Ls.Username, ses.Ls.Authblob, ses.Ls.DeviceName)
+		ses.Sess, err = librespot.LoginSaved(ses.Ls.Username, ses.Ls.AuthBlob, ses.Ls.DeviceName)
 		util.CrashAndBurn(err)
 		if dirty {
 			util.CommitConfig(ses.Ls, f)
@@ -83,16 +103,17 @@ func Login(confFile string, debug bool) (Session, error) {
 	return ses, err
 }
 
-func (s Session) GetTrack(trackId string) (Track, error) {
+func (s Session) GetTrack(trackId string) (TrackStub, error) {
 	var err error
-	var t Track
+	var t TrackStub
 	t.Id = trackId
 	t.STrack, err = s.Sess.Mercury().GetTrack(utils.Base62ToHex(trackId))
 	return t, err
 }
 
 // GetAudio returns the audio file in the desired format(mp3 or ogg), starting at high bitrate then going lower if not available. Throws error if audio of type cannot be found.
-func (s Session) GetAudio(t Track, format FORMAT_TYPE) ([]byte, error) {
+func (s Session) GetAudio(t TrackStub, format FormatType) (Audio, error) {
+	var a Audio
 	var fmts []int32
 	var auds []*Spotify.AudioFile
 	var aud *Spotify.AudioFile
@@ -107,26 +128,27 @@ func (s Session) GetAudio(t Track, format FORMAT_TYPE) ([]byte, error) {
 	}
 
 	//set desired format order
-	if format == FORMAT_MP3 {
+	if format == FormatMp3 {
 		//mp3: 320kbps, 256kbps, 160kbps, 96kbps
 		fmts = []int32{4, 3, 5, 6}
-	} else if format == FORMAT_OGG {
+	} else if format == FormatOgg {
 		//ogg: 320kbps, 160kbps, 96kbps
-		fmts = []int32{3, 2, 1}
+		fmts = []int32{2, 1, 0}
 	} else {
-		return nil, errors.New("invalid format passed")
+		return a, errors.New("invalid format passed")
 	}
 
 	for _, i := range fmts {
 		for _, tr := range auds {
 			//TODO: learn why the cast is necessary
 			if int32(*(tr.Format)) == i {
+				a.Format = Spotify.AudioFile_Format(i)
 				aud = tr
 			}
 		}
 	}
 	if aud == nil {
-		return nil, errors.New("no audio found in desired format")
+		return a, errors.New("no audio found in desired format")
 	} else {
 		if DEBUG {
 			util.PrintStruct(aud)
@@ -135,26 +157,45 @@ func (s Session) GetAudio(t Track, format FORMAT_TYPE) ([]byte, error) {
 
 	decaud, err := s.Sess.Player().LoadTrack(aud, t.STrack.GetGid())
 	util.CrashAndBurn(err)
+	//TODO: find out why this size
 	for decaud.Size() <= 32768 {
 		//sleep for 10ms
 		time.Sleep(1e7)
 	}
 	//fmt.Println("size: " + string(decaud.Size()) + " bytes")
-	var ogg []byte = make([]byte, decaud.Size())
-	var cnk []byte = make([]byte, 128*1024)
+	a.File, err = io.ReadAll(decaud)
+	//a.File = make([]byte, decaud.Size())
+	//var cnk = make([]byte, 128*1024)
+	//
+	//var pos = 0
+	//for {
+	//	tf, err := decaud.Read(cnk)
+	//	if err == io.EOF {
+	//		break
+	//	}
+	//	if tf > 0 {
+	//		copy(a.File[pos:pos+tf], cnk[:tf])
+	//		pos += tf
+	//	}
+	//}
+	return a, err
+}
 
-	var pos int = 0
-	for {
-		tf, err := decaud.Read(cnk)
-		if err == io.EOF {
-			break
-		}
-		if tf > 0 {
-			copy(ogg[pos:pos+tf], cnk[:tf])
-			pos += tf
+func (t TrackStub) GetImage() (Image, error) {
+	var i Image
+	var err error
+	//try to find largest possible image
+	for s := 3; s > -1; s-- {
+		for _, im := range t.STrack.Album.CoverGroup.Image {
+			if *(im.Size) == Spotify.Image_Size(s) {
+				i.Stub = im
+			}
 		}
 	}
-	//TODO: for the love of god do actual error handling
-	err = nil
-	return ogg, err
+	res, err := http.Get("https://i.scdn.co/image/" + hex.EncodeToString(i.Stub.FileId))
+	if err != nil {
+		return i, err
+	}
+	i.File, err = io.ReadAll(res.Body)
+	return i, err
 }
