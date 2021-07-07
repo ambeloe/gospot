@@ -5,11 +5,11 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/gospot/util"
 	"github.com/librespot-org/librespot-golang/Spotify"
 	"github.com/librespot-org/librespot-golang/librespot"
 	"github.com/librespot-org/librespot-golang/librespot/core"
 	"github.com/librespot-org/librespot-golang/librespot/utils"
-	"gospot/util"
 	"io"
 	"net/http"
 	"os"
@@ -144,9 +144,11 @@ func (s Session) GetAudio(t TrackStub, format FormatType) (Audio, error) {
 			if int32(*(tr.Format)) == i {
 				a.Format = Spotify.AudioFile_Format(i)
 				aud = tr
+				goto seethe
 			}
 		}
 	}
+seethe:
 	if aud == nil {
 		return a, errors.New("no audio found in desired format")
 	} else {
@@ -163,21 +165,21 @@ func (s Session) GetAudio(t TrackStub, format FormatType) (Audio, error) {
 		time.Sleep(1e7)
 	}
 	//fmt.Println("size: " + string(decaud.Size()) + " bytes")
-	a.File, err = io.ReadAll(decaud)
-	//a.File = make([]byte, decaud.Size())
-	//var cnk = make([]byte, 128*1024)
-	//
-	//var pos = 0
-	//for {
-	//	tf, err := decaud.Read(cnk)
-	//	if err == io.EOF {
-	//		break
-	//	}
-	//	if tf > 0 {
-	//		copy(a.File[pos:pos+tf], cnk[:tf])
-	//		pos += tf
-	//	}
-	//}
+	//a.File, err = io.ReadAll(decaud)
+	var ogg []byte = make([]byte, decaud.Size())
+	var cnk []byte = make([]byte, 128*1024)
+
+	var pos int = 0
+	for {
+		tf, err := decaud.Read(cnk)
+		if err == io.EOF {
+			break
+		}
+		if tf > 0 {
+			copy(ogg[pos:pos+tf], cnk[:tf])
+			pos += tf
+		}
+	}
 	return a, err
 }
 
@@ -189,13 +191,17 @@ func (t TrackStub) GetImage() (Image, error) {
 		for _, im := range t.STrack.Album.CoverGroup.Image {
 			if *(im.Size) == Spotify.Image_Size(s) {
 				i.Stub = im
+				goto eol
 			}
 		}
 	}
+eol:
 	res, err := http.Get("https://i.scdn.co/image/" + hex.EncodeToString(i.Stub.FileId))
 	if err != nil {
 		return i, err
 	}
+	//TODO: maybe add error handling
+	defer res.Body.Close()
 	i.File, err = io.ReadAll(res.Body)
 	return i, err
 }
