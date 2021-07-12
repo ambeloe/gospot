@@ -179,6 +179,7 @@ seethe:
 			copy(ogg[pos:pos+tf], cnk[:tf])
 			pos += tf
 		}
+		time.Sleep(10e6)
 	}
 	return a, err
 }
