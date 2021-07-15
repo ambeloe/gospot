@@ -4,10 +4,9 @@ import (
 	"bufio"
 	"encoding/json"
 	"fmt"
-	"golang.org/x/crypto/ssh/terminal"
+	"golang.org/x/term"
 	"log"
 	"os"
-	"syscall"
 )
 
 func CommitConfig(v interface{}, f *os.File) {
@@ -49,7 +48,7 @@ func FileSize(path string) int64 {
 
 func PasswdInterrogate(prompt string) []byte {
 	fmt.Print(prompt)
-	goddamnitGo, err := terminal.ReadPassword(syscall.Stdin)
+	goddamnitGo, err := term.ReadPassword(int(os.Stdin.Fd()))
 	if err != nil {
 		fmt.Println(err)
 	}
