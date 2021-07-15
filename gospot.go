@@ -56,7 +56,7 @@ type Image struct {
 
 type Audio struct {
 	Format Spotify.AudioFile_Format
-	File   []byte
+	File   *[]byte
 }
 
 func Login(confFile string, debug bool) (Session, error) {
@@ -181,6 +181,7 @@ seethe:
 		}
 		time.Sleep(10e6)
 	}
+	a.File = &ogg
 	return a, err
 }
 
@@ -201,8 +202,12 @@ eol:
 	if err != nil {
 		return i, err
 	}
-	//TODO: maybe add error handling
-	defer res.Body.Close()
+	defer func(Body io.ReadCloser) {
+		var err = Body.Close()
+		if err != nil {
+			fmt.Println(err)
+		}
+	}(res.Body)
 	i.File, err = io.ReadAll(res.Body)
 	return i, err
 }
