@@ -11,6 +11,7 @@ import (
 	"github.com/librespot-org/librespot-golang/librespot/core"
 	"github.com/librespot-org/librespot-golang/librespot/utils"
 	"io"
+	"io/ioutil"
 	"net/http"
 	"os"
 	"time"
@@ -63,15 +64,23 @@ func Login(confFile string, debug bool) (Session, error) {
 	DEBUG = debug
 	var dirty bool
 	var ses Session
+	ses.Ls = &LocalStore{
+		Username:   "",
+		AuthBlob:   nil,
+		DeviceName: "",
+	}
 	//create config file if it doesnt exist else load config
 	f, err := os.OpenFile(confFile, os.O_CREATE|os.O_RDWR, 0600)
 	util.CrashAndBurn(err)
 	var c = make([]byte, util.FileSize(confFile))
 	_, err = f.Read(c)
 	util.CrashAndBurn(err)
-	//beware trailing commas
-	err = json.Unmarshal(c, &ses.Ls)
-	util.CrashAndBurn(err)
+	s, err := os.Stat(confFile)
+	if s.Size() > 0 {
+		//beware trailing commas
+		err = json.Unmarshal(c, &ses.Ls)
+		util.CrashAndBurn(err)
+	}
 	if ses.Ls.DeviceName == "" {
 		ses.Ls.DeviceName = string(util.Interrogate("Device name: "))
 		dirty = true
@@ -108,6 +117,9 @@ func (s Session) GetTrack(trackId string) (TrackStub, error) {
 	var t TrackStub
 	t.Id = trackId
 	t.STrack, err = s.Sess.Mercury().GetTrack(utils.Base62ToHex(trackId))
+	if t.STrack.Gid == nil {
+		return t, errors.New("Song not found.")
+	}
 	return t, err
 }
 
@@ -208,6 +220,6 @@ eol:
 			fmt.Println(err)
 		}
 	}(res.Body)
-	i.File, err = io.ReadAll(res.Body)
+	i.File, err = ioutil.ReadAll(res.Body)
 	return i, err
 }
