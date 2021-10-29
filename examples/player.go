@@ -6,8 +6,12 @@ import (
 	"github.com/ambeloe/cliui"
 	"github.com/ambeloe/gospot"
 	"github.com/ambeloe/gospot/util"
+	"github.com/faiface/beep"
+	"github.com/faiface/beep/speaker"
+	"github.com/faiface/beep/vorbis"
 	"os"
 	"strconv"
+	"time"
 )
 
 var ses gospot.Session
@@ -30,6 +34,7 @@ func main() {
 	mainmenu.Name = "player"
 	mainmenu.Add("info", info)
 	mainmenu.Add("get", get)
+	mainmenu.Add("play", play)
 
 	for {
 		mainmenu.Run()
@@ -87,4 +92,33 @@ func get(s []string) {
 			fmt.Println("file write error")
 		}
 	}
+}
+
+func play(s []string) {
+	f, err := os.Open("audio/" + s[0] + "/audio.ogg")
+	if err != nil {
+		get(s[:1])
+	} else {
+		fmt.Println("using cached audio")
+	}
+	f, err = os.Open("audio/" + s[0] + "/audio.ogg")
+	if err != nil {
+		fmt.Println("error opening audio")
+		return
+	}
+	str, form, err := vorbis.Decode(f)
+	if err != nil {
+		fmt.Println("error decoding audio")
+		return
+	}
+	defer str.Close()
+	err = speaker.Init(form.SampleRate, form.SampleRate.N(time.Second/10)) //=init speaker and buffer for 100ms
+	if err != nil {
+		fmt.Println("error opening speaker")
+		return
+	}
+	var fin = make(chan bool)
+	fmt.Println("playing...")
+	speaker.Play(beep.Seq(str, beep.Callback(func() { fin <- true })))
+	<-fin
 }

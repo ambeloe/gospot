@@ -75,7 +75,7 @@ func Login(confFile string, debug bool) (Session, error) {
 	var c = make([]byte, util.FileSize(confFile))
 	_, err = f.Read(c)
 	util.CrashAndBurn(err)
-	s, err := os.Stat(confFile)
+	s, err := f.Stat()
 	if s.Size() > 0 {
 		//beware trailing commas
 		err = json.Unmarshal(c, &ses.Ls)
