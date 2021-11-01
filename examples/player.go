@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"flag"
 	"fmt"
 	"github.com/ambeloe/cliui"
@@ -9,7 +10,9 @@ import (
 	"github.com/faiface/beep"
 	"github.com/faiface/beep/speaker"
 	"github.com/faiface/beep/vorbis"
+	"io/ioutil"
 	"os"
+	"path/filepath"
 	"strconv"
 	"time"
 )
@@ -19,15 +22,14 @@ var ses gospot.Session
 func main() {
 	var err error
 
-	var conf = flag.String("config", "", "path for config file")
+	var conf = flag.String("config", "conf.json", "path for config file")
 	var debug = flag.Bool("debug", false, "debug prints")
 	flag.Parse()
 
-	if *conf != "" {
-		ses, err = gospot.Login(*conf, *debug)
-		util.CrashAndBurn(err)
-	} else {
-		ses, err = gospot.Login("conf.json", *debug)
+	ses, err = gospot.Login(*conf, *debug)
+	if err != nil {
+		fmt.Println("error logging in:", err)
+		os.Exit(1)
 	}
 
 	var mainmenu cliui.UI
@@ -68,23 +70,61 @@ func info(s []string) {
 	}
 }
 
+//func play_playlist(s []string) {
+//	if len(s) != 1 {
+//		fmt.Println("playlist only takes one argument")
+//		return
+//	}
+//	s[0] = util.URLStrip(s[0])
+//	ses.Sess.Mercury().GetPlaylist(s[0])
+//
+//}
+
 func get(s []string) {
 	if len(s) == 0 {
 		fmt.Println("not enough arguments.")
 		return
 	}
+
+	var t gospot.TrackStub
+	var img gospot.Image
+	var res []byte
+	var err error
+	var metapath string
+
 	for i, ss := range s {
 		fmt.Println("Getting track ", strconv.Itoa(i))
-		t, err := ses.GetTrack(ss)
+		metapath = filepath.Join("meta", ss, "song.json")
+		res, err = ioutil.ReadFile(metapath)
 		if err != nil {
-			fmt.Println(err)
-			return
+			t, err = ses.GetTrack(ss)
+			if err != nil {
+				fmt.Println(err)
+				return
+			}
+			//marshal song metadata into json and cache
+			res, err = json.Marshal(t)
+			util.CrashAndBurn(err)
+			err = os.MkdirAll(filepath.Join("meta", ss), os.ModePerm)
+			util.CrashAndBurn(err)
+			err = ioutil.WriteFile(metapath, res, 0644)
+			util.CrashAndBurn(err)
+
+			//get song image and write to disk
+			img, err = t.GetImage()
+			util.CrashAndBurn(err)
+			err = ioutil.WriteFile(filepath.Join("meta", ss, "image.jpg"), img.File, 0644)
+			util.CrashAndBurn(err)
+		} else {
+			err = json.Unmarshal(res, &t)
+			util.CrashAndBurn(err)
 		}
-		err = os.MkdirAll("audio/"+ss, os.ModePerm)
+
+		err = os.MkdirAll(filepath.Join("audio", ss), os.ModePerm)
 		util.CrashAndBurn(err)
 		f, err := ses.GetAudio(t, gospot.FormatOgg)
 		util.CrashAndBurn(err)
-		fp, err := os.OpenFile("audio/"+ss+"/audio.ogg", os.O_CREATE|os.O_RDWR, 0644)
+		fp, err := os.OpenFile(filepath.Join("audio", ss, "audio.ogg"), os.O_CREATE|os.O_RDWR, 0644)
 		util.CrashAndBurn(err)
 		wp, err := fp.Write(*f.File)
 		util.CrashAndBurn(err)
@@ -95,13 +135,14 @@ func get(s []string) {
 }
 
 func play(s []string) {
-	f, err := os.Open("audio/" + s[0] + "/audio.ogg")
+	var songid = util.URLStrip(s[0])
+	f, err := os.Open("audio/" + songid + "/audio.ogg")
 	if err != nil {
-		get(s[:1])
+		get([]string{songid})
 	} else {
 		fmt.Println("using cached audio")
 	}
-	f, err = os.Open("audio/" + s[0] + "/audio.ogg")
+	f, err = os.Open("audio/" + songid + "/audio.ogg")
 	if err != nil {
 		fmt.Println("error opening audio")
 		return

@@ -7,6 +7,7 @@ import (
 	"golang.org/x/term"
 	"log"
 	"os"
+	"strings"
 )
 
 func CommitConfig(v interface{}, f *os.File) {
@@ -54,3 +55,26 @@ func PasswdInterrogate(prompt string) []byte {
 	}
 	return goddamnitGo
 }
+
+func URLStrip(s string) string {
+	var x, y int
+
+	x = strings.LastIndex(s, "/")
+	if x == -1 {
+		x = 0
+	} else {
+		x++
+	}
+	y = strings.Index(s, "?")
+	if y == -1 {
+		y = len(s)
+	}
+
+	return s[x:y]
+}
+
+func URIStrip(uri string) string {
+	return uri[strings.LastIndex(uri, ":")+1:]
+}
+
+func Nop(v interface{}) {}

@@ -1,18 +1,12 @@
 package gospot
 
 import (
-	"encoding/hex"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"github.com/ambeloe/gospot/util"
 	"github.com/librespot-org/librespot-golang/Spotify"
 	"github.com/librespot-org/librespot-golang/librespot"
-	"github.com/librespot-org/librespot-golang/librespot/core"
-	"github.com/librespot-org/librespot-golang/librespot/utils"
-	"io"
-	"io/ioutil"
-	"net/http"
+	"github.com/librespot-org/librespot-golang/librespot/metadata"
 	"os"
 	"time"
 )
@@ -30,24 +24,13 @@ type LocalStore struct {
 	Username   string
 	AuthBlob   []byte
 	DeviceName string
+
+	OauthToken OToken
 }
 
-type Session struct {
-	Ls   *LocalStore
-	Sess *core.Session
-}
-
-type TrackStub struct {
-	Id     string
-	STrack *Spotify.Track
-}
-
-type Track struct {
-	Title   string
-	Artists []string
-	Album   string
-	Art     Image
-	Sound   Audio
+type OToken struct {
+	IssueTime time.Time
+	Token     *metadata.Token
 }
 
 type Image struct {
@@ -58,6 +41,16 @@ type Image struct {
 type Audio struct {
 	Format Spotify.AudioFile_Format
 	File   *[]byte
+}
+
+type Playlist struct {
+	Id       string
+	Name     string
+	Thumb    Image
+	Len      int
+	Checksum []byte
+	Songs    []TrackStub
+	Stub     *Spotify.Playlist
 }
 
 func Login(confFile string, debug bool) (Session, error) {
@@ -110,116 +103,4 @@ func Login(confFile string, debug bool) (Session, error) {
 	}
 	//TODO: add actual error handling besides just crashing
 	return ses, err
-}
-
-func (s Session) GetTrack(trackId string) (TrackStub, error) {
-	var err error
-	var t TrackStub
-	t.Id = trackId
-	t.STrack, err = s.Sess.Mercury().GetTrack(utils.Base62ToHex(trackId))
-	if t.STrack.Gid == nil {
-		return t, errors.New("Song not found.")
-	}
-	return t, err
-}
-
-// GetAudio returns the audio file in the desired format(mp3 or ogg), starting at high bitrate then going lower if not available. Throws error if audio of type cannot be found.
-func (s Session) GetAudio(t TrackStub, format FormatType) (Audio, error) {
-	var a Audio
-	var fmts []int32
-	var auds []*Spotify.AudioFile
-	var aud *Spotify.AudioFile
-	if t.STrack.GetFile() == nil {
-		if DEBUG {
-			fmt.Println(t.Id + ": ")
-			util.PrintStruct(t)
-		}
-		auds = t.STrack.Alternative[0].GetFile()
-	} else {
-		auds = t.STrack.GetFile()
-	}
-
-	//set desired format order
-	if format == FormatMp3 {
-		//mp3: 320kbps, 256kbps, 160kbps, 96kbps
-		fmts = []int32{4, 3, 5, 6}
-	} else if format == FormatOgg {
-		//ogg: 320kbps, 160kbps, 96kbps
-		fmts = []int32{2, 1, 0}
-	} else {
-		return a, errors.New("invalid format passed")
-	}
-
-	for _, i := range fmts {
-		for _, tr := range auds {
-			//TODO: learn why the cast is necessary
-			if int32(*(tr.Format)) == i {
-				a.Format = Spotify.AudioFile_Format(i)
-				aud = tr
-				goto seethe
-			}
-		}
-	}
-seethe:
-	if aud == nil {
-		return a, errors.New("no audio found in desired format")
-	} else {
-		if DEBUG {
-			util.PrintStruct(aud)
-		}
-	}
-
-	decaud, err := s.Sess.Player().LoadTrack(aud, t.STrack.GetGid())
-	util.CrashAndBurn(err)
-	//TODO: find out why this size
-	for decaud.Size() <= 32768 {
-		//sleep for 10ms
-		time.Sleep(1e7)
-	}
-	//fmt.Println("size: " + string(decaud.Size()) + " bytes")
-	//a.File, err = io.ReadAll(decaud)
-	var ogg []byte = make([]byte, decaud.Size())
-	var cnk []byte = make([]byte, 128*1024)
-
-	var pos int = 0
-	for {
-		tf, err := decaud.Read(cnk)
-		if err == io.EOF {
-			break
-		}
-		if tf > 0 {
-			copy(ogg[pos:pos+tf], cnk[:tf])
-			pos += tf
-		}
-		time.Sleep(10e6)
-	}
-	a.File = &ogg
-	return a, err
-}
-
-func (t TrackStub) GetImage() (Image, error) {
-	var i Image
-	var err error
-	//try to find largest possible image
-	for s := 3; s > -1; s-- {
-		for _, im := range t.STrack.Album.CoverGroup.Image {
-			if *(im.Size) == Spotify.Image_Size(s) {
-				i.Stub = im
-				goto eol
-			}
-		}
-	}
-eol:
-	res, err := http.Get("https://i.scdn.co/image/" + hex.EncodeToString(i.Stub.FileId))
-	if err != nil {
-		return i, err
-	}
-	defer func(Body io.ReadCloser) {
-		var err = Body.Close()
-		if err != nil {
-			fmt.Println(err)
-		}
-	}(res.Body)
-	i.File, err = ioutil.ReadAll(res.Body)
-	return i, err
 }
