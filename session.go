@@ -1,6 +1,7 @@
 package gospot
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"github.com/ambeloe/gospot/util"
@@ -8,8 +9,9 @@ import (
 	"github.com/librespot-org/librespot-golang/librespot/core"
 	"github.com/librespot-org/librespot-golang/librespot/metadata"
 	"github.com/librespot-org/librespot-golang/librespot/utils"
+	"github.com/zmb3/spotify"
+	"github.com/zmb3/spotify/v2/auth"
 	"io"
-	"reflect"
 	"time"
 )
 
@@ -24,9 +26,45 @@ func (s *Session) GetTrack(trackId string) (TrackStub, error) {
 	t.Id = trackId
 	t.STrack, err = s.Sess.Mercury().GetTrack(utils.Base62ToHex(trackId))
 	if t.STrack.Gid == nil {
-		return t, errors.New("Song not found.")
+		return t, errors.New("GetTrack: song not found")
 	}
 	return t, err
+}
+
+func (s *Session) GetTrackFull(stub TrackStub) (Track, error) {
+	var t Track
+	err := s.PromoteStub(&stub)
+	if err != nil {
+		return t, err
+	}
+	t.Id = stub.Id
+	t.Title = *stub.STrack.Name
+	a, err := stub.GetArtists()
+	if err != nil {
+		return t, err
+	}
+	t.Artists = a
+	al, err := s.GetAlbum(utils.ConvertTo62(stub.STrack.Album.Gid))
+	if err != nil {
+		return t, err
+	}
+	t.Album = al
+	t.Number = int(*stub.STrack.Number)
+	im, err := stub.GetImage()
+	if err != nil {
+		return t, err
+	}
+	t.Art = im
+	son, err := s.GetAudio(stub, FormatOgg)
+	if err != nil {
+		return t, err
+	}
+	t.Sound = son
+	return t, nil
+}
+
+func (s *Session) GetTrackStub(trackId string) (TrackStub, error) {
+	return TrackStub{Id: trackId, STrack: nil}, nil
 }
 
 // GetAudio returns the audio file in the desired format(mp3 or ogg), starting at high bitrate then going lower if not available. Throws error if audio of type cannot be found.
@@ -35,6 +73,9 @@ func (s *Session) GetAudio(t TrackStub, format FormatType) (Audio, error) {
 	var fmts []int32
 	var auds []*Spotify.AudioFile
 	var aud *Spotify.AudioFile
+	if t.STrack == nil {
+		return Audio{}, errors.New("GetAudio: stub not promoted")
+	}
 	if t.STrack.GetFile() == nil {
 		if DEBUG {
 			fmt.Println(t.Id + ": ")
@@ -58,8 +99,7 @@ func (s *Session) GetAudio(t TrackStub, format FormatType) (Audio, error) {
 
 	for _, i := range fmts {
 		for _, tr := range auds {
-			//TODO: learn why the cast is necessary
-			if int32(*(tr.Format)) == i {
+			if int32(*tr.Format) == i {
 				a.Format = Spotify.AudioFile_Format(i)
 				aud = tr
 				goto seethe
@@ -84,10 +124,10 @@ seethe:
 	}
 	//fmt.Println("size: " + string(decaud.Size()) + " bytes")
 	//a.File, err = io.ReadAll(decaud)
-	var ogg []byte = make([]byte, decaud.Size())
-	var cnk []byte = make([]byte, 128*1024)
+	var ogg = make([]byte, decaud.Size())
+	var cnk = make([]byte, 128*1024)
 
-	var pos int = 0
+	pos := 0
 	for {
 		tf, err := decaud.Read(cnk)
 		if err == io.EOF {
@@ -104,29 +144,49 @@ seethe:
 }
 
 //todo: see if long playlists are broken
-//GetPlaylist worked earlier; broken again
-func (s *Session) GetPlaylist(id string) (Playlist, error) {
+func (s *Session) GetPlaylist(id string, stubOnly bool) (Playlist, error) {
 	var pl = Playlist{}
-	sc, err := s.Sess.Mercury().GetPlaylist(utils.Base62ToHex(id)) //
+	sc, err := s.Sess.Mercury().GetPlaylist(id)
+	//sc, err := s.Sess.Mercury().GetPlaylist(utils.Base62ToHex(id))
 	if err != nil {
 		return pl, err
 	}
-	if reflect.DeepEqual(sc, Spotify.SelectedListContent{}) { //it really likes to not throw errors and return empty values
-		return pl, errors.New("getting playlist failed for unknown reason")
+	if sc.Attributes == nil || sc.Attributes.Name == nil || sc.Length == nil {
+		return pl, errors.New("GetPlaylist: failed for unknown reason")
+	}
+	pl.Id = id
+	pl.Name = *sc.Attributes.Name
+	pl.Len = int(*sc.Length)
+
+	pl.Thumb.Id = sc.Attributes.Picture
+	pl.Thumb.File, err = util.GetImageFile(pl.Thumb.Id)
+	if err != nil {
+		return pl, errors.New("GetPlaylist: error getting playlist image")
 	}
 	var t TrackStub
-	for _, e := range sc.Contents.Items {
-		g := util.URIStrip(e.GetUri())
-		t, err = s.GetTrack(g)
-		if err != nil {
-			return pl, errors.New("GetPlaylist: error while getting tracks in playlist -- " + err.Error())
+	if pl.Len != 0 && (sc.Contents == nil || sc.Contents.Items == nil) {
+		return pl, errors.New("GetPlaylist: reported length isn't zero, but contents are nil")
+	}
+	if sc.Contents != nil && sc.Contents.Items != nil {
+		if pl.Len != len(sc.Contents.Items) && !*sc.Contents.Truncated {
+			return pl, errors.New("GetPlaylist: reported length of contents and real length mismatch")
 		}
-		pl.Songs = append(pl.Songs, t)
+		for _, e := range sc.Contents.Items {
+			g := util.URIStrip(e.GetUri())
+			if stubOnly {
+				t, err = s.GetTrackStub(g)
+			} else {
+				t, err = s.GetTrack(g)
+			}
+			if err != nil {
+				return pl, errors.New("GetPlaylist: error while getting tracks in playlist -- " + err.Error())
+			}
+			pl.Songs = append(pl.Songs, t)
+		}
 	}
 	return pl, nil
 }
 
-//GetRootPlaylist also broken again for some reason
 func (s *Session) GetRootPlaylist() ([]Playlist, error) {
 	var pls = make([]Playlist, 0)
 	sc, err := s.Sess.Mercury().GetRootPlaylist(s.Sess.Username()) //not clue why it even has an argument if you can only get your own
@@ -135,8 +195,8 @@ func (s *Session) GetRootPlaylist() ([]Playlist, error) {
 		return pls, errors.New("error getting root playlist")
 	}
 	var p Playlist
-	for _, e := range sc.Contents.GetItems() {
-		p, err = s.GetPlaylist(util.URIStrip(e.GetUri()))
+	for _, e := range sc.Contents.Items {
+		p, err = s.GetPlaylist(util.URIStrip(e.GetUri()), true)
 		if err != nil {
 			return pls, errors.New("error while getting playlist in root: " + err.Error())
 		}
@@ -145,14 +205,60 @@ func (s *Session) GetRootPlaylist() ([]Playlist, error) {
 	return pls, nil
 }
 
+//GetLikedSongs may take forever if you have a ton of songs since it only gets them in chunks of 50
 func (s *Session) GetLikedSongs() ([]TrackStub, error) {
-	return nil, nil
+	var trs []TrackStub
+	_, err := s.ValidToken()
+	if err != nil {
+		return nil, err
+	}
+	//req, err := http.NewRequest("GET", "https://api.spotify.com/v1/me/tracks", nil)
+	//if err != nil {
+	//	return trs, err
+	//}
+	//req.Host = "api.spotify.com"
+	//req.Header.Add("Content", "application/json")
+	//req.Header.Add("Authorization", "Bearer " + tok)
+	//req.
+	//c := http.Client{}
+	//resp, err := c.Do(req)
+	//if err != nil {
+	//	return trs, err
+	//}
+	//rr, err := ioutil.ReadAll(resp.Body)
+	ctx := context.Background()
+	hc := spotifyauth.New().Client(ctx, s.Ls.OauthToken.ToOauthToken())
+	client := spotify.NewClient(hc)
+	client.AutoRetry = true
+	k, off, tot := 50, 0, 0
+
+	for {
+		//fmt.Println(off)
+		t, err := client.CurrentUsersTracksOpt(&spotify.Options{Limit: &k, Offset: &off})
+		if err != nil {
+			return nil, err
+		}
+		if off == 0 {
+			tot = t.Total
+			trs = make([]TrackStub, tot)
+		}
+		for i, tt := range t.Tracks {
+			trs[off+i] = TrackStub{Id: tt.ID.String()}
+			if (off + i + 1) >= tot {
+				goto fuckoff
+			}
+		}
+		off += k
+	}
+fuckoff:
+	return trs, nil
 }
 
 //GetOauthToken gets an access token with all scopes if scope is empty or with the specified scopes
 func (s *Session) GetOauthToken(scope string) (*metadata.Token, error) {
 	if scope == "" {
-		return s.Sess.Mercury().GetToken("2c1ea588dfbc4a989e2426f8385297c3", "ugc-image-upload,playlist-modify-private,playlist-read-private,playlist-modify-public,playlist-read-collaborative,user-read-private,user-read-email,user-read-playback-state,user-modify-playback-state,user-read-currently-playing,user-library-modify,user-library-read,user-read-playback-position,user-read-recently-played,user-top-read,app-remote-control,streaming,user-follow-modify,user-follow-read") //they got it from somewhere lmao https://github.com/Spotifyd/spotifyd/issues/507
+		//they got it from somewhere lmao https://github.com/Spotifyd/spotifyd/issues/507
+		return s.Sess.Mercury().GetToken("2c1ea588dfbc4a989e2426f8385297c3", "ugc-image-upload,playlist-modify-private,playlist-read-private,playlist-modify-public,playlist-read-collaborative,user-read-private,user-read-email,user-read-playback-state,user-modify-playback-state,user-read-currently-playing,user-library-modify,user-library-read,user-read-playback-position,user-read-recently-played,user-top-read,app-remote-control,streaming,user-follow-modify,user-follow-read")
 	} else {
 		return s.Sess.Mercury().GetToken("2c1ea588dfbc4a989e2426f8385297c3", scope)
 	}
@@ -177,4 +283,44 @@ func (s *Session) ValidToken() (string, error) {
 		s.Ls.OauthToken.IssueTime = time.Now()
 	}
 	return s.Ls.OauthToken.Token.AccessToken, nil
+}
+
+func (s *Session) GetArtist(id string) (Artist, error) {
+	var ar Artist
+	a, err := s.Sess.Mercury().GetArtist(utils.Base62ToHex(id))
+	if err != nil {
+		return ar, errors.New("GetArtist: unknown error, " + err.Error())
+	}
+	if a.Name == nil {
+		return ar, errors.New("GetArtist: name was empty")
+	}
+	ar.Id = id
+	ar.Name = *a.Name
+	ar.Genres = a.Genre
+	ar.Stub = a
+	return ar, nil
+}
+
+func (s *Session) GetAlbum(id string) (Album, error) {
+	var al Album
+	a, err := s.Sess.Mercury().GetAlbum(utils.Base62ToHex(id))
+	if err != nil {
+		return al, errors.New("GetAlbum: unknown error, " + err.Error())
+	}
+	if a.Gid == nil || a.Name == nil {
+		return al, errors.New("GetAlbum: required fields nil")
+	}
+	return al, nil
+}
+
+func (s *Session) PromoteStub(t *TrackStub) error {
+	if t.STrack != nil {
+		return nil
+	}
+	tt, err := s.GetTrack(t.Id)
+	if err != nil {
+		return errors.New("PromoteStub: error promoting stub")
+	}
+	t = &tt
+	return nil
 }

@@ -7,6 +7,7 @@ import (
 	"github.com/librespot-org/librespot-golang/Spotify"
 	"github.com/librespot-org/librespot-golang/librespot"
 	"github.com/librespot-org/librespot-golang/librespot/metadata"
+	"golang.org/x/oauth2"
 	"os"
 	"time"
 )
@@ -34,7 +35,7 @@ type OToken struct {
 }
 
 type Image struct {
-	Stub *Spotify.Image
+	Id   []byte
 	File []byte
 }
 
@@ -43,14 +44,27 @@ type Audio struct {
 	File   *[]byte
 }
 
+type Artist struct {
+	Id     string
+	Name   string
+	Genres []string
+	Stub   *Spotify.Artist
+}
+
+type Album struct {
+	Id      string
+	Artists []Artist
+	Date    string //iso8061 date
+	Songs   []TrackStub
+}
+
 type Playlist struct {
-	Id       string
-	Name     string
-	Thumb    Image
-	Len      int
-	Checksum []byte
-	Songs    []TrackStub
-	Stub     *Spotify.Playlist
+	Id    string
+	Name  string
+	Thumb Image
+	Len   int
+	Songs []TrackStub
+	Stub  *Spotify.Playlist
 }
 
 func Login(confFile string, debug bool) (Session, error) {
@@ -103,4 +117,13 @@ func Login(confFile string, debug bool) (Session, error) {
 	}
 	//TODO: add actual error handling besides just crashing
 	return ses, err
+}
+
+func (o OToken) ToOauthToken() *oauth2.Token {
+	var ee oauth2.Token
+	ee.AccessToken = o.Token.AccessToken
+	ee.TokenType = o.Token.TokenType
+	//librespot doesn't give refresh tokens since they aren't really necessary; call ValidToken() before using
+	//ee.Expiry = o.IssueTime.Add(time.Duration(o.Token.ExpiresIn) * time.Second)
+	return &ee
 }

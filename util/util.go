@@ -2,10 +2,14 @@ package util
 
 import (
 	"bufio"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"golang.org/x/term"
+	"io"
+	"io/ioutil"
 	"log"
+	"net/http"
 	"os"
 	"strings"
 )
@@ -75,6 +79,23 @@ func URLStrip(s string) string {
 
 func URIStrip(uri string) string {
 	return uri[strings.LastIndex(uri, ":")+1:]
+}
+
+func GetImageFile(id []byte) ([]byte, error) {
+	var i []byte
+	//image is in JPEG format
+	res, err := http.Get("https://i.scdn.co/image/" + hex.EncodeToString(id))
+	if err != nil {
+		return i, err
+	}
+	defer func(Body io.ReadCloser) {
+		var err = Body.Close()
+		if err != nil {
+			fmt.Println(err)
+		}
+	}(res.Body)
+	i, err = ioutil.ReadAll(res.Body)
+	return i, err
 }
 
 func Nop(v interface{}) {}
