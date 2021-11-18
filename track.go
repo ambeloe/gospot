@@ -9,7 +9,7 @@ import (
 
 type TrackStub struct {
 	Id     string
-	STrack *Spotify.Track `json:"-"`
+	STrack *Spotify.Track
 }
 
 type Track struct {

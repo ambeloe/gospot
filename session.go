@@ -332,6 +332,6 @@ func (s *Session) PromoteStub(t *TrackStub) error {
 	if err != nil {
 		return errors.New("PromoteStub: error promoting stub")
 	}
-	t = &tt
+	*t = tt
 	return nil
 }
