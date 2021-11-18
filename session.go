@@ -11,7 +11,9 @@ import (
 	"github.com/librespot-org/librespot-golang/librespot/utils"
 	"github.com/zmb3/spotify"
 	"github.com/zmb3/spotify/v2/auth"
+	"golang.org/x/sync/errgroup"
 	"io"
+	"sync"
 	"time"
 )
 
@@ -207,50 +209,59 @@ func (s *Session) GetRootPlaylist() ([]Playlist, error) {
 
 //GetLikedSongs may take forever if you have a ton of songs since it only gets them in chunks of 50
 func (s *Session) GetLikedSongs() ([]TrackStub, error) {
+	var trMut = sync.Mutex{}
 	var trs []TrackStub
 	_, err := s.ValidToken()
 	if err != nil {
 		return nil, err
 	}
-	//req, err := http.NewRequest("GET", "https://api.spotify.com/v1/me/tracks", nil)
-	//if err != nil {
-	//	return trs, err
-	//}
-	//req.Host = "api.spotify.com"
-	//req.Header.Add("Content", "application/json")
-	//req.Header.Add("Authorization", "Bearer " + tok)
-	//req.
-	//c := http.Client{}
-	//resp, err := c.Do(req)
-	//if err != nil {
-	//	return trs, err
-	//}
-	//rr, err := ioutil.ReadAll(resp.Body)
 	ctx := context.Background()
 	hc := spotifyauth.New().Client(ctx, s.Ls.OauthToken.ToOauthToken())
 	client := spotify.NewClient(hc)
 	client.AutoRetry = true
 	k, off, tot := 50, 0, 0
 
-	for {
-		//fmt.Println(off)
-		t, err := client.CurrentUsersTracksOpt(&spotify.Options{Limit: &k, Offset: &off})
-		if err != nil {
-			return nil, err
-		}
-		if off == 0 {
-			tot = t.Total
-			trs = make([]TrackStub, tot)
-		}
-		for i, tt := range t.Tracks {
-			trs[off+i] = TrackStub{Id: tt.ID.String()}
-			if (off + i + 1) >= tot {
-				goto fuckoff
-			}
-		}
-		off += k
+	offmut := sync.Mutex{}
+
+	t, err := client.CurrentUsersTracks()
+	if err != nil {
+		return trs, nil
 	}
-fuckoff:
+	tot = t.Total
+	trs = make([]TrackStub, tot)
+
+	var erg = new(errgroup.Group)
+	for {
+		offmut.Lock()
+		erg.Go(func() error {
+			lk := k
+			loff := off
+			offmut.Unlock()
+			t, err := client.CurrentUsersTracksOpt(&spotify.Options{Limit: &lk, Offset: &loff})
+			if err != nil {
+				return err
+			}
+			for i, tt := range t.Tracks {
+				trMut.Lock()
+				trs[loff+i] = TrackStub{Id: tt.FullTrack.ID.String()}
+				trMut.Unlock()
+				if loff+i >= tot-1 {
+					break
+				}
+			}
+			return nil
+		})
+		offmut.Lock()
+		off += k
+		offmut.Unlock()
+		if off >= tot {
+			break
+		}
+	}
+	//fmt.Println("threads spawned, waiting...")
+	if err = erg.Wait(); err != nil {
+		return trs, err
+	}
 	return trs, nil
 }
 
