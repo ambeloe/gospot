@@ -82,6 +82,7 @@ func Login(confFile string, debug bool) (Session, error) {
 		DeviceName: "",
 	}
 	//create config file if it doesnt exist else load config
+again:
 	f, err := os.OpenFile(confFile, os.O_CREATE|os.O_RDWR, 0600)
 	util.CrashAndBurn(err)
 	var c = make([]byte, util.FileSize(confFile))
@@ -113,6 +114,8 @@ func Login(confFile string, debug bool) (Session, error) {
 		util.CrashAndBurn(err)
 		ses.Ls.AuthBlob = sess.ReusableAuthBlob()
 		util.CommitConfig(ses.Ls, f)
+		//librespot sometimes doesn't fully initialize the session for some unknown reason when logging in with a password
+		goto again //yes this is braindead; i don't feel like debugging this weird segfault
 	} else {
 		ses.Sess, err = librespot.LoginSaved(ses.Ls.Username, ses.Ls.AuthBlob, ses.Ls.DeviceName)
 		util.CrashAndBurn(err)
