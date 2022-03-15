@@ -69,7 +69,7 @@ func (s *Session) GetTrackStub(trackId string) (TrackStub, error) {
 	return TrackStub{Id: trackId, STrack: nil}, nil
 }
 
-// GetAudio returns the audio file in the desired format(mp3 or ogg), starting at high bitrate then going lower if not available. Throws error if audio of type cannot be found.
+// GetAudio returns the audio file in the desired format, starting at high bitrate then going lower if not available. Throws error if audio of type cannot be found.
 func (s *Session) GetAudio(t TrackStub, format FormatType) (Audio, error) {
 	var a Audio
 	var fmts []int32
@@ -89,14 +89,19 @@ func (s *Session) GetAudio(t TrackStub, format FormatType) (Audio, error) {
 	}
 
 	//set desired format order
-	if format == FormatMp3 {
+	switch format {
+	case FormatMp3:
 		//mp3: 320kbps, 256kbps, 160kbps, 96kbps
 		fmts = []int32{4, 3, 5, 6}
-	} else if format == FormatOgg {
+	case FormatOgg:
 		//ogg: 320kbps, 160kbps, 96kbps
 		fmts = []int32{2, 1, 0}
-	} else {
+	case FormatBestEffort:
+		//highest bitrate first; ogg preferred in collisions
+		fmts = []int32{2, 4, 3, 1, 5, 0, 6}
+	default:
 		return a, errors.New("invalid format passed")
+
 	}
 
 	for _, i := range fmts {
@@ -145,48 +150,71 @@ seethe:
 	return a, err
 }
 
-//todo: see if long playlists are broken
+//todo: apparently they all are broken now
 func (s *Session) GetPlaylist(id string, stubOnly bool) (Playlist, error) {
 	var pl = Playlist{}
-	sc, err := s.Sess.Mercury().GetPlaylist(id)
-	//sc, err := s.Sess.Mercury().GetPlaylist(utils.Base62ToHex(id))
+
+	_, err := s.ValidToken()
 	if err != nil {
 		return pl, err
 	}
-	if sc.Attributes == nil || sc.Attributes.Name == nil || sc.Length == nil {
-		return pl, errors.New("GetPlaylist: failed for unknown reason")
-	}
-	pl.Id = id
-	pl.Name = *sc.Attributes.Name
-	pl.Len = int(*sc.Length)
+	ctx := context.Background()
+	hc := spotifyauth.New().Client(ctx, s.Ls.OauthToken.ToOauthToken())
+	client := spotify.NewClient(hc)
+	client.AutoRetry = true
 
-	pl.Thumb.Id = sc.Attributes.Picture
-	pl.Thumb.File, err = util.GetImageFile(pl.Thumb.Id)
+	apiPl, err := client.GetPlaylist(spotify.ID(id))
 	if err != nil {
-		return pl, errors.New("GetPlaylist: error getting playlist image")
+		return pl, errors.New("error getting playlist info: " + err.Error())
 	}
+
+	pl.Id = id
+	pl.Name = apiPl.Name
+
+	//get image
+	pl.Thumb.File, err = util.GetFile(apiPl.Images[0].URL) //image struct won't have file id populated
+	if err != nil {
+		return pl, errors.New("error downloading playlist thumbnail image: " + err.Error())
+	}
+
+	pl.APIStub = apiPl
+
+	//populate songs
 	var t TrackStub
-	if pl.Len != 0 && (sc.Contents == nil || sc.Contents.Items == nil) {
-		return pl, errors.New("GetPlaylist: reported length isn't zero, but contents are nil")
-	}
-	if sc.Contents != nil && sc.Contents.Items != nil {
-		if pl.Len != len(sc.Contents.Items) && !*sc.Contents.Truncated {
-			return pl, errors.New("GetPlaylist: reported length of contents and real length mismatch")
-		}
-		for _, e := range sc.Contents.Items {
-			g := util.URIStrip(e.GetUri())
+	pl.Len = apiPl.Tracks.Total
+	pl.Songs = make([]TrackStub, 0, pl.Len)
+	for {
+		for _, apit := range apiPl.Tracks.Tracks {
+			//fmt.Println(apit.Track.String())
+			if apit.Track.ID == "" {
+				//not ideal from a library, but this is the most elegant solution I came up with that doesn't resort to passing data through the error string
+				fmt.Printf("Unplayable song found in playlist \"%s\": %s by %s (%d:%d)\n", pl.Name, apit.Track.Name, apit.Track.Artists[0].Name, apit.Track.Duration/(60*1000), (apit.Track.Duration/1000)%60)
+			}
 			if stubOnly {
-				t, err = s.GetTrackStub(g)
+				t, err = s.GetTrackStub(string(apit.Track.ID))
 			} else {
-				t, err = s.GetTrack(g)
+				t, err = s.GetTrack(string(apit.Track.ID))
+
 			}
 			if err != nil {
-				return pl, errors.New("GetPlaylist: error while getting tracks in playlist -- " + err.Error())
+				return pl, errors.New("error getting track during playlist population: " + err.Error())
 			}
-			pl.Songs = append(pl.Songs, t)
+
+			if apit.Track.ID != "" {
+				pl.Songs = append(pl.Songs, t)
+			}
+
+		}
+
+		err = client.NextPage(&apiPl.Tracks)
+		switch err {
+		case nil:
+		case spotify.ErrNoMorePages:
+			return pl, nil
+		default:
+			return pl, errors.New("error getting tracks of playlist: " + err.Error())
 		}
 	}
-	return pl, nil
 }
 
 func (s *Session) GetRootPlaylist() ([]Playlist, error) {
@@ -198,7 +226,7 @@ func (s *Session) GetRootPlaylist() ([]Playlist, error) {
 	}
 	var p Playlist
 	for _, e := range sc.Contents.Items {
-		p, err = s.GetPlaylist(util.URIStrip(e.GetUri()), true)
+		p, err = s.GetPlaylist(util.URIStrip(*e.Uri), true)
 		if err != nil {
 			return pls, errors.New("error while getting playlist in root: " + err.Error())
 		}
@@ -321,6 +349,38 @@ func (s *Session) GetAlbum(id string) (Album, error) {
 	if a.Gid == nil || a.Name == nil {
 		return al, errors.New("GetAlbum: required fields nil")
 	}
+	al.Id = id
+	al.Name = *a.Name
+	al.Artists = make([]Artist, 0)
+	for _, aar := range a.Artist {
+		ar, err := s.GetArtist(utils.ConvertTo62(aar.Gid))
+		if err != nil {
+			return al, errors.New("Error getting artist while getting album: " + err.Error())
+		}
+		al.Artists = append(al.Artists, ar)
+	}
+	al.Date = fmt.Sprintf("%04d-%02d-%02d", a.Date.Year, a.Date.Month, a.Date.Day)
+
+	//get songs; librespot can't get album songs so the api is used to get them instead
+	//yoinked from GetLikedSongs
+	_, err = s.ValidToken()
+	if err != nil {
+		return al, err
+	}
+	ctx := context.Background()
+	hc := spotifyauth.New().Client(ctx, s.Ls.OauthToken.ToOauthToken())
+	client := spotify.NewClient(hc)
+	client.AutoRetry = true
+
+	fa, err := client.GetAlbum(spotify.ID(id))
+	if err != nil {
+		return al, errors.New("Error getting songs in album: " + err.Error())
+	}
+	for _, ttt := range fa.Tracks.Tracks { //feels like a footgun; better hope albums aren't long
+		al.Songs = append(al.Songs, TrackStub{Id: string(ttt.ID)})
+	}
+
+	al.Stub = a
 	return al, nil
 }
 

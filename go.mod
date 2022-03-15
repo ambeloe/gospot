@@ -2,9 +2,7 @@ module github.com/ambeloe/gospot
 
 go 1.15
 
-replace github.com/librespot-org/librespot-golang => github.com/ambeloe/librespot-golang v0.0.0-20200423180623-b19a2f10c856
-
-//replace github.com/librespot-org/librespot-golang => /home/user/go/src/github.com/ambeloe/librespot-golang
+replace github.com/librespot-org/librespot-golang => github.com/ambeloe/librespot-golang v0.0.0-20211117214543-11c0dbfb4166
 
 require (
 	github.com/ambeloe/cliui v0.0.0-20210818225009-8f54c4b02123

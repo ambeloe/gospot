@@ -7,6 +7,7 @@ import (
 	"github.com/librespot-org/librespot-golang/Spotify"
 	"github.com/librespot-org/librespot-golang/librespot"
 	"github.com/librespot-org/librespot-golang/librespot/metadata"
+	"github.com/zmb3/spotify"
 	"golang.org/x/oauth2"
 	"os"
 	"time"
@@ -17,8 +18,9 @@ var DEBUG = false
 type FormatType byte
 
 const (
-	FormatMp3 FormatType = 1
-	FormatOgg FormatType = 2
+	FormatMp3        FormatType = 1
+	FormatOgg        FormatType = 2
+	FormatBestEffort FormatType = 3
 )
 
 type LocalStore struct {
@@ -48,23 +50,26 @@ type Artist struct {
 	Id     string
 	Name   string
 	Genres []string
-	Stub   *Spotify.Artist
+	Stub   *Spotify.Artist `json:",omitempty"`
 }
 
 type Album struct {
 	Id      string
+	Name    string
 	Artists []Artist
 	Date    string //iso8061 date
 	Songs   []TrackStub
+	Stub    *Spotify.Album `json:",omitempty"`
 }
 
 type Playlist struct {
-	Id    string
-	Name  string
-	Thumb Image
-	Len   int
-	Songs []TrackStub
-	Stub  *Spotify.Playlist
+	Id      string
+	Name    string
+	Thumb   Image
+	Len     int
+	Songs   []TrackStub
+	Stub    *Spotify.Playlist     `json:",omitempty"`
+	APIStub *spotify.FullPlaylist `json:",omitempty"`
 }
 
 func Login(confFile string, debug bool) (Session, error) {

@@ -81,10 +81,9 @@ func URIStrip(uri string) string {
 	return uri[strings.LastIndex(uri, ":")+1:]
 }
 
-func GetImageFile(id []byte) ([]byte, error) {
+func GetFile(url string) ([]byte, error) {
 	var i []byte
-	//image is in JPEG format
-	res, err := http.Get("https://i.scdn.co/image/" + hex.EncodeToString(id))
+	res, err := http.Get(url)
 	if err != nil {
 		return i, err
 	}
@@ -96,6 +95,12 @@ func GetImageFile(id []byte) ([]byte, error) {
 	}(res.Body)
 	i, err = ioutil.ReadAll(res.Body)
 	return i, err
+}
+
+func GetImageFile(id []byte) ([]byte, error) {
+	//image is in JPEG format
+	res, err := GetFile("https://i.scdn.co/image/" + hex.EncodeToString(id))
+	return res, err
 }
 
 func Nop(v interface{}) {}

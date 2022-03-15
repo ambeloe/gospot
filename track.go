@@ -7,9 +7,12 @@ import (
 	"github.com/librespot-org/librespot-golang/librespot/utils"
 )
 
+// ErrMissingImg todo: engooden
+var ErrMissingImg = errors.New("missing image")
+
 type TrackStub struct {
 	Id     string
-	STrack *Spotify.Track
+	STrack *Spotify.Track `json:",omitempty"`
 }
 
 type Track struct {
@@ -23,7 +26,7 @@ type Track struct {
 	Art   Image `json:"-"`
 	Sound Audio `json:"-"`
 
-	Stub *Spotify.Track `json:"-"`
+	Stub *Spotify.Track `json:",omitempty"`
 }
 
 func (t TrackStub) GetImage() (Image, error) {
@@ -31,6 +34,9 @@ func (t TrackStub) GetImage() (Image, error) {
 	var err error
 	//try to find largest possible image
 	for s := 3; s > -1; s-- {
+		if t.STrack.Album.CoverGroup == nil {
+			return i, ErrMissingImg
+		}
 		for _, im := range t.STrack.Album.CoverGroup.Image {
 			if *(im.Size) == Spotify.Image_Size(s) {
 				i.Id = im.FileId

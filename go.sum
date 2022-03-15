@@ -36,8 +36,8 @@ github.com/BurntSushi/xgb v0.0.0-20160522181843-27f122750802/go.mod h1:IVnqGOEym
 github.com/DATA-DOG/go-sqlmock v1.3.3/go.mod h1:f/Ixk793poVmq4qj/V1dPUg2JEAKC73Q5eFN3EC/SaM=
 github.com/ambeloe/cliui v0.0.0-20210818225009-8f54c4b02123 h1:0PVRRunZ8SV7LeidK5wx4u+3gO4UgKlzVmcwhYe+KG0=
 github.com/ambeloe/cliui v0.0.0-20210818225009-8f54c4b02123/go.mod h1:KIJuAK0g7ha5A6n9aSfIRAHL8RZqX3Q0PwTcsj2BMy8=
-github.com/ambeloe/librespot-golang v0.0.0-20200423180623-b19a2f10c856 h1:WLvGgpzH+L7ubOG95BXrefnAq8GiFU49JGOCwcnBjyM=
-github.com/ambeloe/librespot-golang v0.0.0-20200423180623-b19a2f10c856/go.mod h1:Za3+ObeYnUYlQk5JvmVq+9mYt2FVw5XWdSvo+wiCaro=
+github.com/ambeloe/librespot-golang v0.0.0-20211117214543-11c0dbfb4166 h1:Q3xqDYe1VS1jp8h0dqG0mi/tRM+G3iIQZ7amGBG57W0=
+github.com/ambeloe/librespot-golang v0.0.0-20211117214543-11c0dbfb4166/go.mod h1:inDLypfQKHjAfnAZVPh2f62oJyxXWrLQdsIYnpP6O2M=
 github.com/badfortrains/mdns v0.0.0-20160325001438-447166384f51 h1:b6+GdpGhuzxPETrVLwY77iq0L/BqLpcPRmaLNW+SoRY=
 github.com/badfortrains/mdns v0.0.0-20160325001438-447166384f51/go.mod h1:qHRkxMBkkpAWD2poeBYQt6O5IS4dE6w1Cr4Z8Q3feXI=
 github.com/census-instrumentation/opencensus-proto v0.2.1/go.mod h1:f6KPmirojxKA12rnyqOA5BBL4O983OfeGPqjHWSTneU=
