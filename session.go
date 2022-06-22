@@ -78,14 +78,16 @@ func (s *Session) GetAudio(t TrackStub, format FormatType) (Audio, error) {
 	if t.STrack == nil {
 		return Audio{}, errors.New("GetAudio: stub not promoted")
 	}
-	if t.STrack.GetFile() == nil {
+	if auds = t.STrack.GetFile(); auds == nil {
 		if DEBUG {
 			fmt.Println(t.Id + ": ")
 			util.PrintStruct(t)
 		}
-		auds = t.STrack.Alternative[0].GetFile()
-	} else {
-		auds = t.STrack.GetFile()
+		if len(t.STrack.Alternative) > 0 {
+			auds = t.STrack.Alternative[0].GetFile()
+		} else {
+			return a, errors.New("no audio found for track")
+		}
 	}
 
 	//set desired format order
