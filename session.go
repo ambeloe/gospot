@@ -267,11 +267,16 @@ func (s *Session) GetLikedSongs() ([]TrackStub, error) {
 			lk := k
 			loff := off
 			offmut.Unlock()
-			t, err := client.CurrentUsersTracksOpt(&spotify.Options{Limit: &lk, Offset: &loff})
-			if err != nil {
-				return err
+		wtf:
+			t2, err2 := client.CurrentUsersTracksOpt(&spotify.Options{Limit: &lk, Offset: &loff})
+			if err2 != nil {
+				return err2
 			}
-			for i, tt := range t.Tracks {
+			//sometimes it will just return empty tracks
+			if len(t2.Tracks) == 0 && tot%lk != 0 {
+				goto wtf
+			}
+			for i, tt := range t2.Tracks {
 				trMut.Lock()
 				trs[loff+i] = TrackStub{Id: tt.FullTrack.ID.String()}
 				trMut.Unlock()
