@@ -2,12 +2,14 @@ module github.com/ambeloe/gospot
 
 go 1.15
 
-replace github.com/librespot-org/librespot-golang => github.com/ambeloe/librespot-golang v0.0.0-20211117214543-11c0dbfb4166
+replace github.com/librespot-org/librespot-golang => github.com/ambeloe/librespot-golang v0.0.0-20230326014122-a3468800c742
+
+//replace github.com/librespot-org/librespot-golang => /home/user/GolangProjects/librespot-golang
 
 require (
 	github.com/ambeloe/cliui v0.0.0-20210818225009-8f54c4b02123
 	github.com/faiface/beep v1.1.0
-	github.com/librespot-org/librespot-golang v0.0.0-20200423180623-b19a2f10c856
+	github.com/librespot-org/librespot-golang v0.0.0-20220325184705-31669e5a889f
 	github.com/miekg/dns v1.1.43 // indirect
 	github.com/zmb3/spotify v1.3.0
 	github.com/zmb3/spotify/v2 v2.0.0

@@ -8,7 +8,10 @@ import (
 func main() {
 	sess, _ := gospot.Login("conf.json", false)
 
-	ts, _ := sess.GetLikedSongs()
+	ts, err := sess.GetLikedSongs()
+	if err != nil {
+		fmt.Println("aaaaaaaaaaaaaaaaaaaaaaaaaa", err)
+	}
 
 	for i, t := range ts {
 		if t.Id == "" {

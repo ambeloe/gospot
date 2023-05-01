@@ -64,3 +64,14 @@ func (t TrackStub) GetArtists() ([]Artist, error) {
 	}
 	return aa, nil
 }
+
+// SanityCheck makes sure that all the tracks have an id associated with them because 90% of anything spotify related will silently fail. returns true if all is good
+func SanityCheck(tracks []TrackStub) bool {
+	for _, t := range tracks {
+		if t.Id == "" {
+			return false
+		}
+	}
+
+	return true
+}

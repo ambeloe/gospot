@@ -13,6 +13,7 @@ import (
 	"github.com/zmb3/spotify/v2/auth"
 	"golang.org/x/sync/errgroup"
 	"io"
+	"reflect"
 	"sync"
 	"time"
 )
@@ -152,7 +153,6 @@ seethe:
 	return a, err
 }
 
-//todo: apparently they all are broken now
 func (s *Session) GetPlaylist(id string, stubOnly bool) (Playlist, error) {
 	var pl = Playlist{}
 
@@ -219,6 +219,46 @@ func (s *Session) GetPlaylist(id string, stubOnly bool) (Playlist, error) {
 	}
 }
 
+//GetPlaylistMercury "same" as GetPlaylist but uses mercury api instead of the public api. Might be faster, but also can't get playlist images and likes to fail silently.
+func (s *Session) GetPlaylistMercury(id string, stubOnly bool) (Playlist, error) {
+	var pl = Playlist{}
+	sc, err := s.Sess.Mercury().GetPlaylist(id)
+	if err != nil {
+		return pl, err
+	}
+	if reflect.DeepEqual(sc, Spotify.SelectedListContent{}) { //it really likes to not throw errors and return empty values
+		return pl, errors.New("getting playlist failed for unknown reason")
+	}
+	var t TrackStub
+	for _, e := range sc.Contents.Items {
+		t = TrackStub{}
+		g := util.URIStrip(e.GetUri())
+		if stubOnly {
+			t.Id = g
+		} else {
+			t, err = s.GetTrack(g)
+			if err != nil {
+				return pl, errors.New("GetPlaylist: error while getting tracks in playlist -- " + err.Error())
+			}
+		}
+
+		pl.Songs = append(pl.Songs, t)
+	}
+
+	pl.Id = id
+	//want to try to get "intended" length first to maybe allow some error detection
+	if sc.Length != nil {
+		pl.Len = int(*sc.Length)
+	} else {
+		pl.Len = len(pl.Songs)
+	}
+	if sc.Attributes != nil && sc.Attributes.Name != nil { //why must everything in this godforsaken library be a pointer
+		pl.Name = *sc.Attributes.Name
+	}
+	//image not in mercury response???
+	return pl, nil
+}
+
 func (s *Session) GetRootPlaylist() ([]Playlist, error) {
 	var pls = make([]Playlist, 0)
 	sc, err := s.Sess.Mercury().GetRootPlaylist(s.Sess.Username()) //not clue why it even has an argument if you can only get your own
@@ -270,6 +310,10 @@ func (s *Session) GetLikedSongs() ([]TrackStub, error) {
 		wtf:
 			t2, err2 := client.CurrentUsersTracksOpt(&spotify.Options{Limit: &lk, Offset: &loff})
 			if err2 != nil {
+				if err2.Error() == "Bad gateway." {
+					err2 = nil
+					goto wtf
+				}
 				return err2
 			}
 			//sometimes it will just return empty tracks
@@ -297,6 +341,9 @@ func (s *Session) GetLikedSongs() ([]TrackStub, error) {
 	if err = erg.Wait(); err != nil {
 		return trs, err
 	}
+	if !SanityCheck(trs) {
+		return nil, errors.New("track list incomplete")
+	}
 	return trs, nil
 }
 
@@ -310,7 +357,7 @@ func (s *Session) GetOauthToken(scope string) (*metadata.Token, error) {
 	}
 }
 
-// ValidToken for internal use or if you dont want to maintain the token yourself; returns a valid token; uses the cached one if it is still valid, else gets a new one and updates the cache
+// ValidToken for internal use or if you don't want to maintain the token yourself; returns a valid token; uses the cached one if it is still valid, else gets a new one and updates the cache
 func (s *Session) ValidToken() (string, error) {
 	var err error
 	if s.Ls.OauthToken.Token != nil && !s.Ls.OauthToken.IssueTime.IsZero() {

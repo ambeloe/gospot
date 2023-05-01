@@ -38,6 +38,8 @@ github.com/ambeloe/cliui v0.0.0-20210818225009-8f54c4b02123 h1:0PVRRunZ8SV7LeidK
 github.com/ambeloe/cliui v0.0.0-20210818225009-8f54c4b02123/go.mod h1:KIJuAK0g7ha5A6n9aSfIRAHL8RZqX3Q0PwTcsj2BMy8=
 github.com/ambeloe/librespot-golang v0.0.0-20211117214543-11c0dbfb4166 h1:Q3xqDYe1VS1jp8h0dqG0mi/tRM+G3iIQZ7amGBG57W0=
 github.com/ambeloe/librespot-golang v0.0.0-20211117214543-11c0dbfb4166/go.mod h1:inDLypfQKHjAfnAZVPh2f62oJyxXWrLQdsIYnpP6O2M=
+github.com/ambeloe/librespot-golang v0.0.0-20230326014122-a3468800c742 h1:uCQFNYpG6BiQ84fF4VkjrN1a30/+pW1fxCTRWUfycjw=
+github.com/ambeloe/librespot-golang v0.0.0-20230326014122-a3468800c742/go.mod h1:LeHPXRci2Bg6RBmw8BDEFH5nfb8oGU6mll+qTH8UIzw=
 github.com/badfortrains/mdns v0.0.0-20160325001438-447166384f51 h1:b6+GdpGhuzxPETrVLwY77iq0L/BqLpcPRmaLNW+SoRY=
 github.com/badfortrains/mdns v0.0.0-20160325001438-447166384f51/go.mod h1:qHRkxMBkkpAWD2poeBYQt6O5IS4dE6w1Cr4Z8Q3feXI=
 github.com/census-instrumentation/opencensus-proto v0.2.1/go.mod h1:f6KPmirojxKA12rnyqOA5BBL4O983OfeGPqjHWSTneU=
@@ -134,6 +136,8 @@ github.com/kr/pretty v0.1.0/go.mod h1:dAy3ld7l9f0ibDNOQOHHMYYIIbhfbHSm3C4ZsoJORN
 github.com/kr/pty v1.1.1/go.mod h1:pFQYn66WHrOpPYNljwOMqo10TkYh1fy3cYio2l3bCsQ=
 github.com/kr/text v0.1.0 h1:45sCR5RtlFHMR4UwH9sdQ5TC8v0qDQCHnXt+kaKSTVE=
 github.com/kr/text v0.1.0/go.mod h1:4Jbv+DJW3UT/LiOwJeYQe1efqtUx/iVham/4vfdArNI=
+github.com/librespot-org/librespot-golang v0.0.0-20220325184705-31669e5a889f h1:tTMPsyVClxxV+CnlLqzgxTTTFM6J7i//rSejN1Md0b0=
+github.com/librespot-org/librespot-golang v0.0.0-20220325184705-31669e5a889f/go.mod h1:LeHPXRci2Bg6RBmw8BDEFH5nfb8oGU6mll+qTH8UIzw=
 github.com/lucasb-eyer/go-colorful v1.0.2/go.mod h1:0MS4r+7BZKSJ5mw4/S5MPN+qHFF1fYclkSPilDOKW0s=
 github.com/mattn/go-runewidth v0.0.4/go.mod h1:LwmH8dsx7+W8Uxz3IHJYH5QSwggIsqBzpuz5H//U1FU=
 github.com/mewkiz/flac v1.0.7/go.mod h1:yU74UH277dBUpqxPouHSQIar3G1X/QIclVbFahSd1pU=
