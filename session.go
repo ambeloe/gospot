@@ -13,6 +13,7 @@ import (
 	"github.com/zmb3/spotify/v2/auth"
 	"golang.org/x/sync/errgroup"
 	"io"
+	"math/rand"
 	"reflect"
 	"sync"
 	"time"
@@ -295,7 +296,7 @@ func (s *Session) GetLikedSongs() ([]TrackStub, error) {
 
 	t, err := client.CurrentUsersTracks()
 	if err != nil {
-		return trs, nil
+		return trs, err
 	}
 	tot = t.Total
 	trs = make([]TrackStub, tot)
@@ -308,10 +309,16 @@ func (s *Session) GetLikedSongs() ([]TrackStub, error) {
 			loff := off
 			offmut.Unlock()
 		wtf:
+			time.Sleep(time.Duration(rand.Int()%1000) * time.Millisecond)
 			t2, err2 := client.CurrentUsersTracksOpt(&spotify.Options{Limit: &lk, Offset: &loff})
 			if err2 != nil {
 				if err2.Error() == "Bad gateway." {
 					err2 = nil
+					goto wtf
+				}
+				if err2.Error() == "Server error." {
+					err2 = nil
+					//fmt.Println(lk, loff)
 					goto wtf
 				}
 				return err2
